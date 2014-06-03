@@ -1,65 +1,140 @@
-# Kippo
+## Kippo
+_Kippo is a medium interaction SSH honeypot designed to log brute force attacks and, most importantly, the entire shell interaction performed by the attacker._
 
-Kippo is a medium interaction SSH honeypot designed to log brute force attacks and, most importantly, the entire shell interaction performed by the attacker.
+Original Homepage: <https://code.google.com/p/kippo/>.
 
-Kippo is inspired, but not based on [Kojoney](http://kojoney.sourceforge.net/).
 
-## Demo
+## Fork
+This is a **personal public fork** of Kippo, which includes additional features as well as modifications to decrease the chances of fingerprinting the honeypot.
 
-Some interesting logs from a live Kippo installation below (viewable within a web browser with the help of Ajaxterm). Note that some commands may have been improved since these logs were recorded.
+This is based on "Kippo Honeypot v0.8 ([svn r248 - 2014-05-19](https://code.google.com/p/kippo/source/browse/trunk?r=248))".
 
-  * [2009-11-22](http://kippo.rpg.fi/playlog/?l=20091122-075013-5055.log)
-  * [2009-11-23](http://kippo.rpg.fi/playlog/?l=20091123-003854-3359.log)
-  * [2009-11-23](http://kippo.rpg.fi/playlog/?l=20091123-012814-626.log)
-  * [2010-03-16](http://kippo.rpg.fi/playlog/?l=20100316-233121-1847.log)
 
-## Features
+-----
 
-Some interesting features:
-* Fake filesystem with the ability to add/remove files. A full fake filesystem resembling a Debian 5.0 installation is included
-* Possibility of adding fake file contents so the attacker can 'cat' files such as /etc/passwd. Only minimal file contents are included
-* Session logs stored in an [UML Compatible](http://user-mode-linux.sourceforge.net/)  format for easy replay with original timings
-* Just like Kojoney, Kippo saves files downloaded with wget for later inspection
-* Trickery; ssh pretends to connect somewhere, exit doesn't really exit, etc
 
-## Requirements
+## (Required) Quick Setup
+Tested on Debian 7 stable.
 
-Software required:
+```bash
+apt-get update
+apt-get -y install openssl  python python-dev python-openssl python-pyasn1 python-twisted  git
+git clone git://github.com/g0tmi1k/kippo.git /opt/kippo/
+cp -n /opt/kippo/kippo.cfg{.dist,}
+chown -R nobody\:nogroup /opt/kippo/
+su nobody -c '/bin/bash /opt/kippo/start.sh'
+```
 
-* An operating system (tested on Debian, CentOS, FreeBSD and Windows 7)
-* Python 2.5+
-* Twisted 8.0+
-* PyCrypto
-* Zope Interface
 
-See Wiki for some installation instructions.
+## (Recommend) Port 22
+It is possibly to use "iptables" and redirect the traffic to port TCP 2222 (Kippo's default port) or... use "authbind" to allow non-privileged the non-user (nobody) to use the privileged port TCP 22 (default SSH port).
 
-## How to run it?
+```bash
+apt-get -y install authbind
+touch /etc/authbind/byport/22
+chown nobody\:nogroup /etc/authbind/byport/22
+chmod 0777 /etc/authbind/byport/22
+sed -i 's/^twistd /authbind --deep twistd /' /opt/kippo/start.sh
+sed -i 's/^ssh_port = .*/ssh_port = 22/' /opt/kippo/kippo.cfg
+[ -e /opt/kippo/kippo.pid ] && kill $(cat /opt/kippo/kippo.pid) && sleep 2
+su nobody -c '/bin/bash /opt/kippo/start.sh'
+```
+_...Don't forget about altering the "real" ssh port before hand!._
 
-Edit kippo.cfg to your liking and start the honeypot by running:
+```bash
+sed -i 's/^Port .*/Port 222/' /etc/ssh/sshd_config
+service ssh restart
+```
 
-`./start.sh`
 
-start.sh is a simple shell script that runs Kippo in the background using twistd. Detailed startup options can be given by running twistd manually. For example, to run Kippo in foreground:
+## (Optional) Unique Customization
+Some suggestions on how to extend the customization, making the instant unique _(therefore less chance of detection)_.
 
-`twistd -y kippo.tac -n`
+### Hostname
 
-By default Kippo listens for ssh connections on port 2222. You can change this, but do not change it to 22 as it requires root privileges. Use port forwarding instead. (More info: MakingKippoReachable).
+```
+...
+hostname = uniquehostname
+...
+```
+_File: `./kippo.cfg`_
 
-Files of interest:
+-----
 
-* dl/ - files downloaded with wget are stored here
-* log/kippo.log - log/debug output
-* log/tty/ - session logs
-* utils/playlog.py - utility to replay session logs
-* utils/createfs.py - used to create fs.pickle
-* fs.pickle - fake filesystem
-* honeyfs/ - file contents for the fake filesystem - feel free to copy a real system here
+```
+uniquehostname
+```
+_File: `./honeyfs/etc/hostname`_
 
-## Is it secure?
+-----
 
-Maybe. See [FAQ](https://github.com/desaster/kippo/wiki/FAQ)
+```
+...
+127.0.0.1    uniquehostname
+....
+```
+_File: `./honeyfs/etc/hosts`_
 
-## I have some questions!
+### SSH Version
 
-I ~~am~~ _might be_ reachable via e-mail: *desaster* at *gmail* dot *com*, or as *desaster* on the *#honeypots* channel in the *freenode* IRC network.
+```bash
+...
+ssh_version_string = SSH-2.0-OpenSSH_6.0p1 Debian-4
+...
+```
+_File: `./kippo.cfg`_
+
+### SSH Banner
+
+```
+*************************************************************
+*        All connections are monitored and recorded.        *
+* Disconnect IMMEDIATELY if you are not an authorized user! *
+*************************************************************
+```
+_File: `./honeyfs/etc/issue.net`_
+
+### Add Addiontal Honeypot Credentials
+This will add "`Password1`" to the accepted password list.
+
+ _Note: Adding "*" will accept any password submitted._
+
+```bash
+cd /opt/kippo/ && python utils/passdb.py data/pass.db add Password1
+```
+
+### Adding fake "loot"
+The following command will generate a "fake" file in `/root/accounts.zip.enc` _(which is 7mb)_.
+
+```bash
+dd if=/dev/urandom of=honeyfs/root/accounts.zip.enc bs=1M count=7
+```
+
+### Other
+These are only some suggestions - feel free to alter the honeypot however you wish!
+
+
+-----
+
+
+## "Tell-tale signs" Of The Honeypot
+Kippo is a "simulated environment". The attackers are placed in a "controlled jail", which will only response to commands/files that have been pre-defined (aka whitelisted). As a result, this can let it down, for example:
+
++ Missing core commands - Kippo simulates various "common" commands, however, if the attacker uses a "uncommon" command or ask for a unregistered response _(when it should be there by default)_, it will report "command not found" or give an incorrect response.
++ Timestamp on log files - some of the log files are "static" and will not update with the date or the actions of the attacker.
++ ...Various other issues.
+
+Kippo is far from "perfect" and can be easily identified by an experienced attacker. However, this could confuse or even trick an amateur attacker into believing it real. As a result Kippo **will indicate if someone is somewhere they shouldn't be** (aka an early warning system) - _plus it is fun to watch the replays back ;)._
+
+
+-----
+
+
+## Warnings & Legal
+Do not use if you do not accept the risks. The author(s) cannot be held responsible for the use of this program, including for any possible data loss and/or damages.
+
+This code has been designed and created to invite unauthorized users into the system and the network in which it is been executed on. As a result, they may perform malicious actions on your device(s).
+
+The code itself _(e.g. the wget command)_ can be used to connect to services that may or may not be public exposed. Also there are various "DoS" vulnerabilities due to there being no limitations when accessing resources. The code itself also has not been through a security audit.
+
+If you are going to use it, it is highly recommend that you run this on a secure, up-to-date, insolated machine that does not contain any sensitive information as well as being separated from the rest of the network (e.g. DMZ zone).
